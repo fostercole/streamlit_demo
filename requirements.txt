@@ -5,3 +5,4 @@ numpy
 Pillow  
 transformers
 matplotlib
+scipy
