@@ -388,7 +388,7 @@ if st.session_state['buyer_data'] and st.session_state['seller_data']:
 
     for key, tab in zip(measurement_labels.keys(), measurement_tabs):
         with tab:
-            st.subheader(f"Number Line for {measurement_labels[key]}")
+            st.subheader(f"Comparison of {measurement_labels[key]}")
             # Extract seller names and values
             sellers, values = zip(*all_measurements[key])
 
@@ -409,7 +409,7 @@ if st.session_state['buyer_data'] and st.session_state['seller_data']:
             plt.yticks([])
             plt.xlabel('Value')
             plt.xlim(min(values) - 0.1 * (max(values) - min(values)), max(values) + 0.1 * (max(values) - min(values)))
-            plt.title(f"Comparison of {measurement_labels[key]}")
+            # plt.title(f"Comparison of {measurement_labels[key]}")
             st.pyplot(plt)
 
 else:
