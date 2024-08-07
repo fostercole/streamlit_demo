@@ -2,7 +2,6 @@ torch
 streamlit
 pandas
 numpy
-shutil
 Pillow  
 transformers
 matplotlib
