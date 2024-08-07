@@ -123,7 +123,7 @@ st.title("Data Valuation")
 datasets = {
     "Spanish Hotel Reviews": "spanish_hotel_reviews.csv",
     "Amazon Food Reviews": "amazonFood.csv",
-    "Kindle Book Reviews": "all_kindle_review.csv",
+    "Kindle Book Reviews": "all_kindle_review .csv",
     "Pokemon Images": "pokemon_images.zip",
     "Stop Sign Images": "stop_signs.zip"
 }
