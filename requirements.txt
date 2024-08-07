@@ -8,3 +8,4 @@ transformers
 matplotlib
 scipy
 scikit-learn
+vendi-score
