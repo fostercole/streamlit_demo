@@ -125,7 +125,8 @@ datasets = {
     "Amazon Food Reviews": "amazonFood.csv",
     "Kindle Book Reviews": "all_kindle_review .csv",
     "Pokemon Images": "pokemon_images.zip",
-    "Stop Sign Images": "stop_signs.zip"
+    "Stop Sign Images": "stop_signs.zip",
+    "Chest X-Ray Images": "chest_xray_images.zip",
 }
 
 # Section to choose or upload a buyer dataset
