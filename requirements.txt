@@ -6,4 +6,4 @@ Pillow
 transformers
 matplotlib
 scipy
-sklearn
+scikit-learn
