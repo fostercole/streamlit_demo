@@ -121,9 +121,9 @@ st.title("Data Valuation")
 
 # Options for pre-saved datasets
 datasets = {
-    "Spanish Hotel Reviews": "spanish_hotel_reviews.csv",
-    "Amazon Food Reviews": "amazonFood.csv",
-    "Kindle Book Reviews": "all_kindle_review .csv",
+    # "Spanish Hotel Reviews": "spanish_hotel_reviews.csv",
+    # "Amazon Food Reviews": "amazonFood.csv",
+    # "Kindle Book Reviews": "all_kindle_review .csv",
     "Pokemon Images": "pokemon_images.zip",
     "Stop Sign Images": "stop_signs.zip",
     "Chest X-Ray Images": "chest_xray_images.zip",
@@ -194,7 +194,7 @@ if st.session_state['buyer_data'] is None:
                 zip_ref.extractall("temp_images_buyer")
 
             buyer_images = load_images_from_folder("temp_images_buyer")
-            st.write(f"Found {len(buyer_images)} images in the uploaded folder.")  # Debugging info
+            st.write(f"Found {len(buyer_images)} images in the selected folder.")  # Debugging info
             if not buyer_images:
                 st.warning("No images found in the selected folder.")
             else:
@@ -206,85 +206,65 @@ if st.session_state['buyer_data'] is None:
                     'file_name': buyer_option
                 }
 
-# Section to choose or upload seller datasets
-st.header("Add your own seller dataset(s) or choose from the following:")
-seller_option = st.selectbox("Choose a dataset type", ["Upload your own CSV(s)", "Upload a folder of JPG/PNG images"] + list(datasets.keys()), key="seller_selectbox")
+# Function to load embeddings from .pt files
+def load_embeddings_from_pt(file_path):
+    return torch.load(file_path)
 
-# Ensure seller data is only computed once per unique file
-if seller_option == "Upload your own CSV(s)":
-    seller_files = st.file_uploader("Upload Seller CSV(s)", type="csv", accept_multiple_files=True, key="seller_files")
-    if seller_files:
-        for seller_file in seller_files:
-            seller_file_name = seller_file.name
-            if seller_file_name not in st.session_state['seller_data']:
-                seller_df = read_csv_with_fallback(seller_file)
+# Automatically process all .pt files in the 'embeddings' folder as seller datasets
+seller_folder_path = 'embeddings'
+if os.path.exists(seller_folder_path):
+    seller_files = os.listdir(seller_folder_path)
+    for seller_file in seller_files:
+        seller_file_path = os.path.join(seller_folder_path, seller_file)
+        if seller_file.endswith('.pt') and seller_file not in st.session_state['seller_data']:
+            try:
+                embeddings = load_embeddings_from_pt(seller_file_path)
+                st.session_state['seller_data'][seller_file] = {
+                    'embeddings': embeddings.numpy()  # Convert tensors to numpy for consistency with other parts of your code
+                }
+                # st.write(f"Loaded embeddings for {seller_file}: Shape {embeddings.shape}")
+            except Exception as e:
+                st.error(f"Failed to load embeddings from {seller_file_path}: {str(e)}")
+else:
+    st.write("No seller datasets found in the embeddings folder.")
+# Automatically process all datasets in the 'embeddings' folder as seller datasets
+seller_folder_path = 'embeddings'
+if os.path.exists(seller_folder_path):
+    seller_files = os.listdir(seller_folder_path)
+    for seller_file in seller_files:
+        seller_file_path = os.path.join(seller_folder_path, seller_file)
+        if seller_file not in st.session_state['seller_data']:
+            if seller_file.endswith('.csv'):
+                seller_df = read_csv_with_fallback(seller_file_path)
                 if not seller_df.empty:
                     seller_texts = seller_df.iloc[:, 0].dropna().astype(str).tolist()
                     seller_embeddings = get_clip_embeddings_text(seller_texts, processor, model).detach().numpy()
 
                     # Store in session state
-                    st.session_state['seller_data'][seller_file_name] = {
+                    st.session_state['seller_data'][seller_file] = {
                         'embeddings': seller_embeddings
                     }
-elif seller_option == "Upload a folder of JPG/PNG images":
-    image_folders = st.file_uploader("Upload ZIP file(s) of JPG/PNG images", type="zip", accept_multiple_files=True, key="seller_image_folders")
-    if image_folders:
-        for image_folder in image_folders:
-            folder_name = image_folder.name
-            if folder_name not in st.session_state['seller_data']:
-                with open(f"temp_images_seller_{folder_name}.zip", "wb") as f:
-                    f.write(image_folder.read())
-
+            elif seller_file.endswith('.zip'):
                 # Clear the directory before extracting new images
-                clear_directory(f"temp_images_seller_{folder_name}")
-                with zipfile.ZipFile(f"temp_images_seller_{folder_name}.zip", 'r') as zip_ref:
-                    zip_ref.extractall(f"temp_images_seller_{folder_name}")
+                temp_dir = f"temp_images_seller_{seller_file}"
+                clear_directory(temp_dir)
+                with zipfile.ZipFile(seller_file_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
 
-                seller_images = load_images_from_folder(f"temp_images_seller_{folder_name}")
-                st.write(f"Found {len(seller_images)} images in the uploaded folder: {folder_name}.")  # Debugging info
+                seller_images = load_images_from_folder(temp_dir)
+                st.write(f"Found {len(seller_images)} images in the uploaded folder: {seller_file}.")  # Debugging info
                 if not seller_images:
-                    st.warning(f"No images found in the uploaded folder: {folder_name}.")
+                    st.warning(f"No images found in the uploaded folder: {seller_file}.")
                 else:
                     seller_embeddings = get_clip_embeddings_images(seller_images, processor, model).detach().numpy()
 
                     # Store in session state
-                    st.session_state['seller_data'][folder_name] = {
+                    st.session_state['seller_data'][seller_file] = {
                         'embeddings': seller_embeddings
                     }
-else:
-    selected_dataset = datasets[seller_option]
-    if seller_option not in st.session_state['seller_data']:
-        if selected_dataset.endswith('.csv'):
-            seller_df = read_csv_with_fallback(selected_dataset)
-            seller_file_name = seller_option
-            if not seller_df.empty:
-                seller_texts = seller_df.iloc[:, 0].dropna().astype(str).tolist()
-                seller_embeddings = get_clip_embeddings_text(seller_texts, processor, model).detach().numpy()
 
-                # Store in session state
-                st.session_state['seller_data'][seller_file_name] = {
-                    'embeddings': seller_embeddings
-                }
-        elif selected_dataset.endswith('.zip'):
-            # Clear the directory before extracting new images
-            clear_directory(f"temp_images_seller_{seller_option}")
-            with zipfile.ZipFile(selected_dataset, 'r') as zip_ref:
-                zip_ref.extractall(f"temp_images_seller_{seller_option}")
-
-            seller_images = load_images_from_folder(f"temp_images_seller_{seller_option}")
-            st.write(f"Found {len(seller_images)} images in the selected folder.")  # Debugging info
-            if not seller_images:
-                st.warning("No images found in the selected folder.")
-            else:
-                seller_embeddings = get_clip_embeddings_images(seller_images, processor, model).detach().numpy()
-
-                # Store in session state
-                st.session_state['seller_data'][seller_option] = {
-                    'embeddings': seller_embeddings
-                }
-
-# Check if both buyer and seller data are available
-if st.session_state['buyer_data'] and st.session_state['seller_data']:
+# Proceed with calculations if buyer data is available
+if st.session_state['buyer_data']:
     # Create dictionaries from session state data
     buyer_name = st.session_state['buyer_data']['file_name']
     X_b = st.session_state['buyer_data']['embeddings']
@@ -301,116 +281,162 @@ if st.session_state['buyer_data'] and st.session_state['seller_data']:
 
     # Prepare a DataFrame to collect the buyer eigenvalues in the same format
     buyer_eigenvalues_df = pd.DataFrame(sorted_eigvals_b).transpose()
-    buyer_eigenvalues_df.columns = [f"Eigenvalue {i+1}" for i in range(10)]
+    buyer_eigenvalues_df.columns = [f"Eigenvalue {i+1}" for i in range(len(sorted_eigvals_b))]
     buyer_eigenvalues_df.index = [buyer_name]
 
     # Display the results
     st.write("Top 10 Sorted Eigenvalues (Buyer):")
     st.write(buyer_eigenvalues_df)
 
-    # Prepare a DataFrame to collect all seller eigenvalues
-    seller_eigenvalues_df = pd.DataFrame()
+    # Check if any seller data is available
+    if st.session_state['seller_data']:
+        # Prepare a DataFrame to collect all seller eigenvalues
+        seller_eigenvalues_df = pd.DataFrame()
 
-    # Seller eigenvalues
-    for seller_name, seller_embeddings in st.session_state['seller_data'].items():
-        X_s = seller_embeddings['embeddings']
-        cov_s = np.cov(X_s, rowvar=False)
+        # Seller eigenvalues
+        for seller_name, seller_embeddings in st.session_state['seller_data'].items():
+            X_s = seller_embeddings['embeddings']
+            cov_s = np.cov(X_s, rowvar=False)
 
-        # Eigendecomposition of seller's covariance
-        eigvals_s, eigvecs_s = np.linalg.eigh(cov_s)
+            # Eigendecomposition of seller's covariance
+            eigvals_s, eigvecs_s = np.linalg.eigh(cov_s)
 
-        # Sort by decreasing order
-        index_s = np.argsort(eigvals_s)[::-1]
-        sorted_eigvals_s = eigvals_s[index_s][:10]  # First 10 eigenvalues
+            # Sort by decreasing order
+            index_s = np.argsort(eigvals_s)[::-1]
+            sorted_eigvals_s = eigvals_s[index_s][:10]  # First 10 eigenvalues
 
-        # Add seller eigenvalues to the DataFrame
-        seller_eigenvalues_df[seller_name] = sorted_eigvals_s
+            # Add seller eigenvalues to the DataFrame
+            seller_eigenvalues_df[seller_name] = sorted_eigvals_s
 
-    # Transpose the DataFrame to align sellers with rows
-    seller_eigenvalues_df = seller_eigenvalues_df.transpose()
-    seller_eigenvalues_df.columns = [f"Eigenvalue {i+1}" for i in range(10)]
+        # Transpose the DataFrame to align sellers with rows
+        seller_eigenvalues_df = seller_eigenvalues_df.transpose()
+        seller_eigenvalues_df.columns = [f"Eigenvalue {i+1}" for i in range(seller_eigenvalues_df.shape[1])]
 
-    # Display all seller eigenvalues
-    st.write("Top 10 Sorted Eigenvalues (Sellers):")
-    st.write(seller_eigenvalues_df)
-    st.header("Diversity and Relevance Metrics to Help the Buyer Choose a Seller:")
-    # Number of principal components to use
-    n_components = 10
+        # Display all seller eigenvalues
+        st.write("Top 10 Sorted Eigenvalues (Sellers):")
+        st.write(seller_eigenvalues_df)
+        st.header("Diversity and Relevance Metrics to Help the Buyer Choose a Seller:")
+        # Number of principal components to use
+        n_components = 10
 
-    # Create tabs for each seller
-    seller_tabs = st.tabs(list(st.session_state['seller_data'].keys()))
+        # Create tabs for each seller if there is at least one seller
+        if st.session_state['seller_data']:
+            seller_tabs = st.tabs(list(st.session_state['seller_data'].keys()))
 
-    # Use shorter metric names
-    measurement_labels = {
-        'correlation': 'Correlation',
-        'overlap': 'Overlap',
-        'l2': 'L2 Distance',
-        'cosine': 'Cosine Similarity',
-        'difference': 'Difference',
-        'volume': 'Volume',
-        'vendi': 'Vendi Score',
-        'dispersion': 'Dispersion'
-    }
+            # Use shorter metric names
+            measurement_labels = {
+                'correlation': 'Correlation',
+                'overlap': 'Overlap',
+                'l2': 'L2 Distance',
+                'cosine': 'Cosine Similarity',
+                'difference': 'Difference',
+                'volume': 'Volume',
+                'vendi': 'Vendi Score',
+                'dispersion': 'Dispersion'
+            }
 
-    # Dictionary to hold all measurements
-    all_measurements = {key: [] for key in measurement_labels.keys()}
+            # Dictionary to hold all measurements
+            all_measurements = {key: [] for key in measurement_labels.keys()}
 
-    for seller_name, seller_info in zip(st.session_state['seller_data'], seller_tabs):
-        with seller_info:
-            X_s = st.session_state['seller_data'][seller_name]['embeddings']
-            seller_measurements = get_measurements(X_b, X_s, n_components=n_components)
+            for seller_name, seller_info in zip(st.session_state['seller_data'], seller_tabs):
+                with seller_info:
+                    X_s = st.session_state['seller_data'][seller_name]['embeddings']
+                    seller_measurements = get_measurements(X_b, X_s, n_components=n_components)
 
-            # Collect measurements for each seller
-            for key in measurement_labels.keys():
-                all_measurements[key].append((seller_name, seller_measurements[key]))
+                    # Collect measurements for each seller
+                    for key in measurement_labels.keys():
+                        all_measurements[key].append((seller_name, seller_measurements[key]))
 
-            # Map original keys to new descriptive labels
-            labeled_measurements = {measurement_labels[key]: value for key, value in seller_measurements.items()}
+                    # Map original keys to new descriptive labels
+                    labeled_measurements = {measurement_labels[key]: value for key, value in seller_measurements.items()}
 
-            # Display the results for each seller
-            st.write(f"Measurements for Seller: {seller_name}")
+                    # Display the results for each seller
+                    st.write(f"Measurements for Seller: {seller_name}")
 
-            # Convert measurements to a DataFrame and display it
-            if labeled_measurements:
-                measurements_df = pd.DataFrame.from_dict(labeled_measurements, orient='index', columns=['Value'])
-                st.table(measurements_df)
+                    # Convert measurements to a DataFrame and display it
+                    if labeled_measurements:
+                        measurements_df = pd.DataFrame.from_dict(labeled_measurements, orient='index', columns=['Value'])
+                        st.table(measurements_df)
 
-            # Display the first 10 PCA directions as a horizontal table for seller
-            pca_directions_seller = seller_measurements.get('pca_directions', [])
-            if pca_directions_seller:
-                directions_seller_df = pd.DataFrame(pca_directions_seller[:n_components]).transpose()
-                directions_seller_df.columns = [f"Direction {i+1}" for i in range(n_components)]
-                st.write("First 10 PCA Directions (Seller):")
-                st.dataframe(directions_seller_df)
+                    # Display the first 10 PCA directions as a horizontal table for seller
+                    pca_directions_seller = seller_measurements.get('pca_directions', [])
+                    if pca_directions_seller:
+                        directions_seller_df = pd.DataFrame(pca_directions_seller[:n_components]).transpose()
+                        directions_seller_df.columns = [f"Direction {i+1}" for i in range(len(pca_directions_seller[:n_components]))]
+                        st.write("First 10 PCA Directions (Seller):")
+                        st.dataframe(directions_seller_df)
 
-    # Create tabs for each measurement category
-    measurement_tabs = st.tabs(list(measurement_labels.keys()))
+            # Create tabs for each measurement category
+            measurement_tabs = st.tabs(list(measurement_labels.keys()))
 
-    for key, tab in zip(measurement_labels.keys(), measurement_tabs):
-        with tab:
-            st.subheader(f"Comparison of {measurement_labels[key]}")
-            # Extract seller names and values
-            sellers, values = zip(*all_measurements[key])
+            for key, tab in zip(measurement_labels.keys(), measurement_tabs):
+                with tab:
+                    st.subheader(f"Comparison of {measurement_labels[key]}")
+                    # Extract seller names and values
+                    sellers, values = zip(*all_measurements[key])
 
-            # Define colors for sellers
-            num_sellers = len(sellers)
-            colors = list(mcolors.TABLEAU_COLORS.values())[:num_sellers]  # Use discrete colors from Tableau colormap
+                    # Define colors for sellers
+                    num_sellers = len(sellers)
+                    colors = list(mcolors.TABLEAU_COLORS.values())[:num_sellers]  # Use discrete colors from Tableau colormap
 
-            # Plot the number line
-            plt.figure(figsize=(12, 3))
-            plt.hlines(0, min(values), max(values), colors='gray', linestyles='dashed', linewidth=1)
-            scatter = plt.scatter(values, np.zeros_like(values), c=colors, s=100, edgecolor='black')
+                    # Plot the number line
+                    plt.figure(figsize=(12, 3))
+                    plt.hlines(0, min(values), max(values), colors='gray', linestyles='dashed', linewidth=1)
+                    scatter = plt.scatter(values, np.zeros_like(values), c=colors, s=100, edgecolor='black')
 
-            # Annotate the dots with seller names
-            for i, (value, seller) in enumerate(zip(values, sellers)):
-                plt.annotate(seller, (value, 0), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=9)
+                    # Annotate the dots with seller names
+                    for i, (value, seller) in enumerate(zip(values, sellers)):
+                        plt.annotate(seller, (value, 0), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=9)
 
-            plt.grid(axis='x', linestyle='--', alpha=0.5)
-            plt.yticks([])
-            plt.xlabel('Value')
-            plt.xlim(min(values) - 0.1 * (max(values) - min(values)), max(values) + 0.1 * (max(values) - min(values)))
-            # plt.title(f"Comparison of {measurement_labels[key]}")
-            st.pyplot(plt)
+                    plt.grid(axis='x', linestyle='--', alpha=0.5)
+                    plt.yticks([])
+                    plt.xlabel('Value')
+                    plt.xlim(min(values) - 0.1 * (max(values) - min(values)), max(values) + 0.1 * (max(values) - min(values)))
+                    # plt.title(f"Comparison of {measurement_labels[key]}")
+                    st.pyplot(plt)
 
+        else:
+            st.write("No seller datasets available.")
 else:
-    st.write("Please upload both buyer and seller datasets to proceed.")
+    st.write("Please upload a buyer dataset to proceed.")
+# Main logic to process datasets and display results
+def process_and_display_data():
+    # Prepare the plot
+    fig, ax = plt.subplots()
+    colors = list(mcolors.TABLEAU_COLORS.values())  # Using Tableau colors for distinction
+
+    if 'buyer_data' in st.session_state and st.session_state['buyer_data']:
+        buyer_data = st.session_state['buyer_data']
+        X_b = buyer_data['embeddings']
+
+        if 'seller_data' in st.session_state and st.session_state['seller_data']:
+            for index, (seller_name, seller_info) in enumerate(st.session_state['seller_data'].items()):
+                X_s = seller_info['embeddings']
+
+                # Debugging information
+                if X_b is not None and X_s is not None:
+                    try:
+                        seller_measurements = get_measurements(X_b, X_s, n_components=10)
+                        volume = seller_measurements.get('volume', 0)
+                        overlap = seller_measurements.get('overlap', 0)
+
+                        # Add point to the plot
+                        ax.scatter(volume, overlap, color=colors[index % len(colors)], label=seller_name)
+
+                    except Exception as e:
+                        st.error(f"Error processing measurements for {seller_name}: {str(e)}")
+                else:
+                    st.error("Invalid embeddings data.")
+            ax.set_xlabel('Relevance (Volume)')
+            ax.set_ylabel('Diversity (Overlap)')
+            ax.set_title('Relevance vs. Diversity for All Sellers')
+            ax.legend()
+            st.pyplot(fig)
+        else:
+            st.warning("No seller data available.")
+    else:
+        st.warning("No buyer data available.")
+
+
+# Automatically process and display data on load
+process_and_display_data()
