@@ -121,9 +121,6 @@ st.title("Data Valuation")
 
 # Options for pre-saved datasets
 datasets = {
-    # "Spanish Hotel Reviews": "spanish_hotel_reviews.csv",
-    # "Amazon Food Reviews": "amazonFood.csv",
-    # "Kindle Book Reviews": "all_kindle_review .csv",
     "Pokemon Images": "pokemon_images.zip",
     "Stop Sign Images": "stop_signs.zip",
     "Chest X-Ray Images": "chest_xray_images.zip",
@@ -222,7 +219,6 @@ if os.path.exists(seller_folder_path):
                 st.session_state['seller_data'][seller_file] = {
                     'embeddings': embeddings.numpy()  # Convert tensors to numpy for consistency with other parts of your code
                 }
-                # st.write(f"Loaded embeddings for {seller_file}: Shape {embeddings.shape}")
             except Exception as e:
                 st.error(f"Failed to load embeddings from {seller_file_path}: {str(e)}")
 else:
@@ -384,15 +380,18 @@ if st.session_state['buyer_data']:
                     plt.hlines(0, min(values), max(values), colors='gray', linestyles='dashed', linewidth=1)
                     scatter = plt.scatter(values, np.zeros_like(values), c=colors, s=100, edgecolor='black')
 
-                    # Annotate the dots with seller names
-                    for i, (value, seller) in enumerate(zip(values, sellers)):
-                        plt.annotate(seller, (value, 0), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=9)
-
                     plt.grid(axis='x', linestyle='--', alpha=0.5)
                     plt.yticks([])
                     plt.xlabel('Value')
                     plt.xlim(min(values) - 0.1 * (max(values) - min(values)), max(values) + 0.1 * (max(values) - min(values)))
-                    # plt.title(f"Comparison of {measurement_labels[key]}")
+
+                    # Create custom legend handles
+                    handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], markersize=8, label=seller) for i, seller in enumerate(sellers)]
+                    legend = plt.legend(handles=handles, title="Sellers", loc="upper right", bbox_to_anchor=(1.05, 1), borderaxespad=0., fontsize='x-small')
+
+                    # Adjust layout to prevent clipping of legend or labels
+                    plt.tight_layout()
+                    plt.subplots_adjust(right=0.75)  # Adjust the right margin to provide space for the legend
                     st.pyplot(plt)
 
         else:
@@ -436,7 +435,6 @@ def process_and_display_data():
             st.warning("No seller data available.")
     else:
         st.warning("No buyer data available.")
-
 
 # Automatically process and display data on load
 process_and_display_data()
