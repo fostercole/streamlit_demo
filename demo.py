@@ -290,7 +290,10 @@ if st.session_state['buyer_data']:
         seller_eigenvalues_df = pd.DataFrame()
 
         # Seller eigenvalues
-        for seller_name, seller_embeddings in st.session_state['seller_data'].items():
+        total_sellers = len(st.session_state['seller_data'])
+        progress_bar_seller = st.progress(0)
+        
+        for idx, (seller_name, seller_embeddings) in enumerate(st.session_state['seller_data'].items()):
             X_s = seller_embeddings['embeddings']
             cov_s = np.cov(X_s, rowvar=False)
 
@@ -303,6 +306,11 @@ if st.session_state['buyer_data']:
 
             # Add seller eigenvalues to the DataFrame
             seller_eigenvalues_df[seller_name] = sorted_eigvals_s
+
+            # Update progress bar
+            progress_bar_seller.progress((idx + 1) / total_sellers)
+
+        progress_bar_seller.empty()
 
         # Transpose the DataFrame to align sellers with rows
         seller_eigenvalues_df = seller_eigenvalues_df.transpose()
@@ -368,31 +376,32 @@ if st.session_state['buyer_data']:
             for key, tab in zip(measurement_labels.keys(), measurement_tabs):
                 with tab:
                     st.subheader(f"Comparison of {measurement_labels[key]}")
-                    # Extract seller names and values
-                    sellers, values = zip(*all_measurements[key])
+                    with st.spinner(f"Generating graph for {measurement_labels[key]}..."):
+                        # Extract seller names and values
+                        sellers, values = zip(*all_measurements[key])
 
-                    # Define colors for sellers
-                    num_sellers = len(sellers)
-                    colors = list(mcolors.TABLEAU_COLORS.values())[:num_sellers]  # Use discrete colors from Tableau colormap
+                        # Define colors for sellers
+                        num_sellers = len(sellers)
+                        colors = list(mcolors.TABLEAU_COLORS.values())[:num_sellers]  # Use discrete colors from Tableau colormap
 
-                    # Plot the number line
-                    plt.figure(figsize=(12, 3))
-                    plt.hlines(0, min(values), max(values), colors='gray', linestyles='dashed', linewidth=1)
-                    scatter = plt.scatter(values, np.zeros_like(values), c=colors, s=100, edgecolor='black')
+                        # Plot the number line
+                        plt.figure(figsize=(12, 3))
+                        plt.hlines(0, min(values), max(values), colors='gray', linestyles='dashed', linewidth=1)
+                        scatter = plt.scatter(values, np.zeros_like(values), c=colors, s=100, edgecolor='black')
 
-                    plt.grid(axis='x', linestyle='--', alpha=0.5)
-                    plt.yticks([])
-                    plt.xlabel('Value')
-                    plt.xlim(min(values) - 0.1 * (max(values) - min(values)), max(values) + 0.1 * (max(values) - min(values)))
+                        plt.grid(axis='x', linestyle='--', alpha=0.5)
+                        plt.yticks([])
+                        plt.xlabel('Value')
+                        plt.xlim(min(values) - 0.1 * (max(values) - min(values)), max(values) + 0.1 * (max(values) - min(values)))
 
-                    # Create custom legend handles
-                    handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], markersize=8, label=seller) for i, seller in enumerate(sellers)]
-                    legend = plt.legend(handles=handles, title="Sellers", loc="upper right", bbox_to_anchor=(1.05, 1), borderaxespad=0., fontsize='x-small')
+                        # Create custom legend handles
+                        handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], markersize=8, label=seller) for i, seller in enumerate(sellers)]
+                        legend = plt.legend(handles=handles, title="Sellers", loc="upper right", bbox_to_anchor=(1.05, 1), borderaxespad=0., fontsize='x-small')
 
-                    # Adjust layout to prevent clipping of legend or labels
-                    plt.tight_layout()
-                    plt.subplots_adjust(right=0.75)  # Adjust the right margin to provide space for the legend
-                    st.pyplot(plt)
+                        # Adjust layout to prevent clipping of legend or labels
+                        plt.tight_layout()
+                        plt.subplots_adjust(right=0.75)  # Adjust the right margin to provide space for the legend
+                        st.pyplot(plt)
 
         else:
             st.write("No seller datasets available.")
@@ -401,40 +410,41 @@ else:
 # Main logic to process datasets and display results
 def process_and_display_data():
     # Prepare the plot
-    fig, ax = plt.subplots()
-    colors = list(mcolors.TABLEAU_COLORS.values())  # Using Tableau colors for distinction
+    with st.spinner("Generating relevance vs. diversity graph..."):
+        fig, ax = plt.subplots()
+        colors = list(mcolors.TABLEAU_COLORS.values())  # Using Tableau colors for distinction
 
-    if 'buyer_data' in st.session_state and st.session_state['buyer_data']:
-        buyer_data = st.session_state['buyer_data']
-        X_b = buyer_data['embeddings']
+        if 'buyer_data' in st.session_state and st.session_state['buyer_data']:
+            buyer_data = st.session_state['buyer_data']
+            X_b = buyer_data['embeddings']
 
-        if 'seller_data' in st.session_state and st.session_state['seller_data']:
-            for index, (seller_name, seller_info) in enumerate(st.session_state['seller_data'].items()):
-                X_s = seller_info['embeddings']
+            if 'seller_data' in st.session_state and st.session_state['seller_data']:
+                for index, (seller_name, seller_info) in enumerate(st.session_state['seller_data'].items()):
+                    X_s = seller_info['embeddings']
 
-                # Debugging information
-                if X_b is not None and X_s is not None:
-                    try:
-                        seller_measurements = get_measurements(X_b, X_s, n_components=10)
-                        volume = seller_measurements.get('volume', 0)
-                        overlap = seller_measurements.get('overlap', 0)
+                    # Debugging information
+                    if X_b is not None and X_s is not None:
+                        try:
+                            seller_measurements = get_measurements(X_b, X_s, n_components=10)
+                            volume = seller_measurements.get('volume', 0)
+                            overlap = seller_measurements.get('overlap', 0)
 
-                        # Add point to the plot
-                        ax.scatter(volume, overlap, color=colors[index % len(colors)], label=seller_name)
+                            # Add point to the plot
+                            ax.scatter(volume, overlap, color=colors[index % len(colors)], label=seller_name)
 
-                    except Exception as e:
-                        st.error(f"Error processing measurements for {seller_name}: {str(e)}")
-                else:
-                    st.error("Invalid embeddings data.")
-            ax.set_xlabel('Relevance (Volume)')
-            ax.set_ylabel('Diversity (Overlap)')
-            ax.set_title('Relevance vs. Diversity for All Sellers')
-            ax.legend()
-            st.pyplot(fig)
+                        except Exception as e:
+                            st.error(f"Error processing measurements for {seller_name}: {str(e)}")
+                    else:
+                        st.error("Invalid embeddings data.")
+                ax.set_xlabel('Relevance (Volume)')
+                ax.set_ylabel('Diversity (Overlap)')
+                ax.set_title('Relevance vs. Diversity for All Sellers')
+                ax.legend()
+                st.pyplot(fig)
+            else:
+                st.warning("No seller data available.")
         else:
-            st.warning("No seller data available.")
-    else:
-        st.warning("No buyer data available.")
+            st.warning("No buyer data available.")
 
 # Automatically process and display data on load
 process_and_display_data()
