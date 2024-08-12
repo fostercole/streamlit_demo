@@ -259,6 +259,42 @@ if os.path.exists(seller_folder_path):
                         'embeddings': seller_embeddings
                     }
 
+# Pre-compute and cache the top 10 eigenvalues for all seller datasets
+def compute_eigenvalues():
+    seller_eigenvalues_df = pd.DataFrame()
+
+    # Iterate over seller datasets and compute eigenvalues
+    total_sellers = len(st.session_state['seller_data'])
+    progress_bar_seller = st.progress(0)
+
+    for idx, (seller_name, seller_data) in enumerate(st.session_state['seller_data'].items()):
+        X_s = seller_data['embeddings']
+        cov_s = np.cov(X_s, rowvar=False)
+
+        # Eigendecomposition of seller's covariance
+        eigvals_s, eigvecs_s = np.linalg.eigh(cov_s)
+
+        # Sort by decreasing order
+        index_s = np.argsort(eigvals_s)[::-1]
+        sorted_eigvals_s = eigvals_s[index_s][:10]  # First 10 eigenvalues
+
+        # Cache the sorted eigenvalues in session state
+        st.session_state['seller_data'][seller_name]['sorted_eigenvalues'] = sorted_eigvals_s
+
+        # Add seller eigenvalues to the DataFrame
+        seller_eigenvalues_df[seller_name] = sorted_eigvals_s
+
+        # Update progress bar
+        progress_bar_seller.progress((idx + 1) / total_sellers)
+
+    progress_bar_seller.empty()
+
+    # Transpose the DataFrame to align sellers with rows
+    seller_eigenvalues_df = seller_eigenvalues_df.transpose()
+    seller_eigenvalues_df.columns = [f"Eigenvalue {i+1}" for i in range(seller_eigenvalues_df.shape[1])]
+
+    return seller_eigenvalues_df
+
 # Proceed with calculations if buyer data is available
 if st.session_state['buyer_data']:
     # Create dictionaries from session state data
@@ -284,129 +320,103 @@ if st.session_state['buyer_data']:
     st.write("Top 10 Sorted Eigenvalues (Buyer):")
     st.write(buyer_eigenvalues_df)
 
-    # Check if any seller data is available
+    # Compute seller eigenvalues only if not already computed
+    if 'seller_eigenvalues' not in st.session_state:
+        st.session_state['seller_eigenvalues'] = compute_eigenvalues()
+
+    # Display all seller eigenvalues
+    st.write("Top 10 Sorted Eigenvalues (Sellers):")
+    st.write(st.session_state['seller_eigenvalues'])
+
+    st.header("Diversity and Relevance Metrics to Help the Buyer Choose a Seller:")
+    # Number of principal components to use
+    n_components = 10
+
+    # Create tabs for each seller if there is at least one seller
     if st.session_state['seller_data']:
-        # Prepare a DataFrame to collect all seller eigenvalues
-        seller_eigenvalues_df = pd.DataFrame()
+        seller_tabs = st.tabs(list(st.session_state['seller_data'].keys()))
 
-        # Seller eigenvalues
-        total_sellers = len(st.session_state['seller_data'])
-        progress_bar_seller = st.progress(0)
-        
-        for idx, (seller_name, seller_embeddings) in enumerate(st.session_state['seller_data'].items()):
-            X_s = seller_embeddings['embeddings']
-            cov_s = np.cov(X_s, rowvar=False)
+        # Use shorter metric names
+        measurement_labels = {
+            'correlation': 'Correlation',
+            'overlap': 'Overlap',
+            'l2': 'L2 Distance',
+            'cosine': 'Cosine Similarity',
+            'difference': 'Difference',
+            'volume': 'Volume',
+            'vendi': 'Vendi Score',
+            'dispersion': 'Dispersion'
+        }
 
-            # Eigendecomposition of seller's covariance
-            eigvals_s, eigvecs_s = np.linalg.eigh(cov_s)
+        # Dictionary to hold all measurements
+        all_measurements = {key: [] for key in measurement_labels.keys()}
 
-            # Sort by decreasing order
-            index_s = np.argsort(eigvals_s)[::-1]
-            sorted_eigvals_s = eigvals_s[index_s][:10]  # First 10 eigenvalues
+        for seller_name, seller_info in zip(st.session_state['seller_data'], seller_tabs):
+            with seller_info:
+                X_s = st.session_state['seller_data'][seller_name]['embeddings']
+                seller_measurements = get_measurements(X_b, X_s, n_components=n_components)
 
-            # Add seller eigenvalues to the DataFrame
-            seller_eigenvalues_df[seller_name] = sorted_eigvals_s
+                # Collect measurements for each seller
+                for key in measurement_labels.keys():
+                    all_measurements[key].append((seller_name, seller_measurements[key]))
 
-            # Update progress bar
-            progress_bar_seller.progress((idx + 1) / total_sellers)
+                # Map original keys to new descriptive labels
+                labeled_measurements = {measurement_labels[key]: value for key, value in seller_measurements.items()}
 
-        progress_bar_seller.empty()
+                # Display the results for each seller
+                st.write(f"Measurements for Seller: {seller_name}")
 
-        # Transpose the DataFrame to align sellers with rows
-        seller_eigenvalues_df = seller_eigenvalues_df.transpose()
-        seller_eigenvalues_df.columns = [f"Eigenvalue {i+1}" for i in range(seller_eigenvalues_df.shape[1])]
+                # Convert measurements to a DataFrame and display it
+                if labeled_measurements:
+                    measurements_df = pd.DataFrame.from_dict(labeled_measurements, orient='index', columns=['Value'])
+                    st.table(measurements_df)
 
-        # Display all seller eigenvalues
-        st.write("Top 10 Sorted Eigenvalues (Sellers):")
-        st.write(seller_eigenvalues_df)
-        st.header("Diversity and Relevance Metrics to Help the Buyer Choose a Seller:")
-        # Number of principal components to use
-        n_components = 10
+                # Display the first 10 PCA directions as a horizontal table for seller
+                pca_directions_seller = seller_measurements.get('pca_directions', [])
+                if pca_directions_seller:
+                    directions_seller_df = pd.DataFrame(pca_directions_seller[:n_components]).transpose()
+                    directions_seller_df.columns = [f"Direction {i+1}" for i in range(len(pca_directions_seller[:n_components]))]
+                    st.write("First 10 PCA Directions (Seller):")
+                    st.dataframe(directions_seller_df)
 
-        # Create tabs for each seller if there is at least one seller
-        if st.session_state['seller_data']:
-            seller_tabs = st.tabs(list(st.session_state['seller_data'].keys()))
+        # Create tabs for each measurement category
+        measurement_tabs = st.tabs(list(measurement_labels.keys()))
 
-            # Use shorter metric names
-            measurement_labels = {
-                'correlation': 'Correlation',
-                'overlap': 'Overlap',
-                'l2': 'L2 Distance',
-                'cosine': 'Cosine Similarity',
-                'difference': 'Difference',
-                'volume': 'Volume',
-                'vendi': 'Vendi Score',
-                'dispersion': 'Dispersion'
-            }
+        for key, tab in zip(measurement_labels.keys(), measurement_tabs):
+            with tab:
+                st.subheader(f"Comparison of {measurement_labels[key]}")
+                with st.spinner(f"Generating graph for {measurement_labels[key]}..."):
+                    # Extract seller names and values
+                    sellers, values = zip(*all_measurements[key])
 
-            # Dictionary to hold all measurements
-            all_measurements = {key: [] for key in measurement_labels.keys()}
+                    # Define colors for sellers
+                    num_sellers = len(sellers)
+                    colors = list(mcolors.TABLEAU_COLORS.values())[:num_sellers]  # Use discrete colors from Tableau colormap
 
-            for seller_name, seller_info in zip(st.session_state['seller_data'], seller_tabs):
-                with seller_info:
-                    X_s = st.session_state['seller_data'][seller_name]['embeddings']
-                    seller_measurements = get_measurements(X_b, X_s, n_components=n_components)
+                    # Plot the number line
+                    plt.figure(figsize=(12, 3))
+                    plt.hlines(0, min(values), max(values), colors='gray', linestyles='dashed', linewidth=1)
+                    scatter = plt.scatter(values, np.zeros_like(values), c=colors, s=100, edgecolor='black')
 
-                    # Collect measurements for each seller
-                    for key in measurement_labels.keys():
-                        all_measurements[key].append((seller_name, seller_measurements[key]))
+                    plt.grid(axis='x', linestyle='--', alpha=0.5)
+                    plt.yticks([])
+                    plt.xlabel('Value')
+                    plt.xlim(min(values) - 0.1 * (max(values) - min(values)), max(values) + 0.1 * (max(values) - min(values)))
 
-                    # Map original keys to new descriptive labels
-                    labeled_measurements = {measurement_labels[key]: value for key, value in seller_measurements.items()}
+                    # Create custom legend handles
+                    handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], markersize=8, label=seller) for i, seller in enumerate(sellers)]
+                    legend = plt.legend(handles=handles, title="Sellers", loc="upper right", bbox_to_anchor=(1.05, 1), borderaxespad=0., fontsize='x-small')
 
-                    # Display the results for each seller
-                    st.write(f"Measurements for Seller: {seller_name}")
+                    # Adjust layout to prevent clipping of legend or labels
+                    plt.tight_layout()
+                    plt.subplots_adjust(right=0.75)  # Adjust the right margin to provide space for the legend
+                    st.pyplot(plt)
 
-                    # Convert measurements to a DataFrame and display it
-                    if labeled_measurements:
-                        measurements_df = pd.DataFrame.from_dict(labeled_measurements, orient='index', columns=['Value'])
-                        st.table(measurements_df)
-
-                    # Display the first 10 PCA directions as a horizontal table for seller
-                    pca_directions_seller = seller_measurements.get('pca_directions', [])
-                    if pca_directions_seller:
-                        directions_seller_df = pd.DataFrame(pca_directions_seller[:n_components]).transpose()
-                        directions_seller_df.columns = [f"Direction {i+1}" for i in range(len(pca_directions_seller[:n_components]))]
-                        st.write("First 10 PCA Directions (Seller):")
-                        st.dataframe(directions_seller_df)
-
-            # Create tabs for each measurement category
-            measurement_tabs = st.tabs(list(measurement_labels.keys()))
-
-            for key, tab in zip(measurement_labels.keys(), measurement_tabs):
-                with tab:
-                    st.subheader(f"Comparison of {measurement_labels[key]}")
-                    with st.spinner(f"Generating graph for {measurement_labels[key]}..."):
-                        # Extract seller names and values
-                        sellers, values = zip(*all_measurements[key])
-
-                        # Define colors for sellers
-                        num_sellers = len(sellers)
-                        colors = list(mcolors.TABLEAU_COLORS.values())[:num_sellers]  # Use discrete colors from Tableau colormap
-
-                        # Plot the number line
-                        plt.figure(figsize=(12, 3))
-                        plt.hlines(0, min(values), max(values), colors='gray', linestyles='dashed', linewidth=1)
-                        scatter = plt.scatter(values, np.zeros_like(values), c=colors, s=100, edgecolor='black')
-
-                        plt.grid(axis='x', linestyle='--', alpha=0.5)
-                        plt.yticks([])
-                        plt.xlabel('Value')
-                        plt.xlim(min(values) - 0.1 * (max(values) - min(values)), max(values) + 0.1 * (max(values) - min(values)))
-
-                        # Create custom legend handles
-                        handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], markersize=8, label=seller) for i, seller in enumerate(sellers)]
-                        legend = plt.legend(handles=handles, title="Sellers", loc="upper right", bbox_to_anchor=(1.05, 1), borderaxespad=0., fontsize='x-small')
-
-                        # Adjust layout to prevent clipping of legend or labels
-                        plt.tight_layout()
-                        plt.subplots_adjust(right=0.75)  # Adjust the right margin to provide space for the legend
-                        st.pyplot(plt)
-
-        else:
-            st.write("No seller datasets available.")
+    else:
+        st.write("No seller datasets available.")
 else:
     st.write("Please upload a buyer dataset to proceed.")
+
 # Main logic to process datasets and display results
 def process_and_display_data():
     # Prepare the plot
