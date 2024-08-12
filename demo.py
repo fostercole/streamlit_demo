@@ -287,7 +287,13 @@ if st.session_state['buyer_data']:
         for seller_name, seller_info in zip(st.session_state['seller_data'], seller_tabs):
             with seller_info:
                 X_s = st.session_state['seller_data'][seller_name]['embeddings']
-                seller_measurements = get_measurements(X_b, X_s, n_components=n_components)
+                
+                # Add progress bar for each seller
+                with st.spinner(f"Calculating metrics for seller: {seller_name}"):
+                    seller_progress = st.progress(0)
+                    seller_measurements = get_measurements(X_b, X_s, n_components=n_components)
+                    seller_progress.progress(100)
+                    seller_progress.empty()
 
                 # Collect measurements for each seller
                 for key in measurement_labels.keys():
