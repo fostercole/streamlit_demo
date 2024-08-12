@@ -223,77 +223,10 @@ if os.path.exists(seller_folder_path):
                 st.error(f"Failed to load embeddings from {seller_file_path}: {str(e)}")
 else:
     st.write("No seller datasets found in the embeddings folder.")
-# Automatically process all datasets in the 'embeddings' folder as seller datasets
-seller_folder_path = 'embeddings'
-if os.path.exists(seller_folder_path):
-    seller_files = os.listdir(seller_folder_path)
-    for seller_file in seller_files:
-        seller_file_path = os.path.join(seller_folder_path, seller_file)
-        if seller_file not in st.session_state['seller_data']:
-            if seller_file.endswith('.csv'):
-                seller_df = read_csv_with_fallback(seller_file_path)
-                if not seller_df.empty:
-                    seller_texts = seller_df.iloc[:, 0].dropna().astype(str).tolist()
-                    seller_embeddings = get_clip_embeddings_text(seller_texts, processor, model).detach().numpy()
 
-                    # Store in session state
-                    st.session_state['seller_data'][seller_file] = {
-                        'embeddings': seller_embeddings
-                    }
-            elif seller_file.endswith('.zip'):
-                # Clear the directory before extracting new images
-                temp_dir = f"temp_images_seller_{seller_file}"
-                clear_directory(temp_dir)
-                with zipfile.ZipFile(seller_file_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-
-                seller_images = load_images_from_folder(temp_dir)
-                st.write(f"Found {len(seller_images)} images in the uploaded folder: {seller_file}.")  # Debugging info
-                if not seller_images:
-                    st.warning(f"No images found in the uploaded folder: {seller_file}.")
-                else:
-                    seller_embeddings = get_clip_embeddings_images(seller_images, processor, model).detach().numpy()
-
-                    # Store in session state
-                    st.session_state['seller_data'][seller_file] = {
-                        'embeddings': seller_embeddings
-                    }
-
-# Pre-compute and cache the top 10 eigenvalues for all seller datasets
-def compute_eigenvalues():
-    seller_eigenvalues_df = pd.DataFrame()
-
-    # Iterate over seller datasets and compute eigenvalues
-    total_sellers = len(st.session_state['seller_data'])
-    progress_bar_seller = st.progress(0)
-
-    for idx, (seller_name, seller_data) in enumerate(st.session_state['seller_data'].items()):
-        X_s = seller_data['embeddings']
-        cov_s = np.cov(X_s, rowvar=False)
-
-        # Eigendecomposition of seller's covariance
-        eigvals_s, eigvecs_s = np.linalg.eigh(cov_s)
-
-        # Sort by decreasing order
-        index_s = np.argsort(eigvals_s)[::-1]
-        sorted_eigvals_s = eigvals_s[index_s][:10]  # First 10 eigenvalues
-
-        # Cache the sorted eigenvalues in session state
-        st.session_state['seller_data'][seller_name]['sorted_eigenvalues'] = sorted_eigvals_s
-
-        # Add seller eigenvalues to the DataFrame
-        seller_eigenvalues_df[seller_name] = sorted_eigvals_s
-
-        # Update progress bar
-        progress_bar_seller.progress((idx + 1) / total_sellers)
-
-    progress_bar_seller.empty()
-
-    # Transpose the DataFrame to align sellers with rows
-    seller_eigenvalues_df = seller_eigenvalues_df.transpose()
-    seller_eigenvalues_df.columns = [f"Eigenvalue {i+1}" for i in range(seller_eigenvalues_df.shape[1])]
-
-    return seller_eigenvalues_df
+# Load seller eigenvalues from CSV
+def load_seller_eigenvalues(file_path='seller_eigenvalues.csv'):
+    return pd.read_csv(file_path, index_col=0)
 
 # Proceed with calculations if buyer data is available
 if st.session_state['buyer_data']:
@@ -320,9 +253,9 @@ if st.session_state['buyer_data']:
     st.write("Top 10 Sorted Eigenvalues (Buyer):")
     st.write(buyer_eigenvalues_df)
 
-    # Compute seller eigenvalues only if not already computed
+    # Load precomputed seller eigenvalues
     if 'seller_eigenvalues' not in st.session_state:
-        st.session_state['seller_eigenvalues'] = compute_eigenvalues()
+        st.session_state['seller_eigenvalues'] = load_seller_eigenvalues()
 
     # Display all seller eigenvalues
     st.write("Top 10 Sorted Eigenvalues (Sellers):")
