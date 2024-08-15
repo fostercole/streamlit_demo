@@ -357,6 +357,7 @@ else:
     st.write("Please upload a buyer dataset to proceed.")
 
 # Main logic to process datasets and display results
+# Main logic to process datasets and display results
 def process_and_display_data():
     # Prepare the plot
     with st.spinner("Generating relevance vs. diversity graph..."):
@@ -375,25 +376,29 @@ def process_and_display_data():
                     if X_b is not None and X_s is not None:
                         try:
                             seller_measurements = get_measurements(X_b, X_s, n_components=10)
-                            volume = seller_measurements.get('volume', 0)
-                            overlap = seller_measurements.get('overlap', 0)
+                            overlap = seller_measurements.get('overlap', 0)  # Now on x-axis
+                            volume = seller_measurements.get('volume', 0)  # Now on y-axis
 
                             # Add point to the plot
-                            ax.scatter(volume, overlap, color=colors[index % len(colors)], label=seller_name)
+                            ax.scatter(overlap, volume, color=colors[index % len(colors)], label=seller_name)
 
                         except Exception as e:
                             st.error(f"Error processing measurements for {seller_name}: {str(e)}")
                     else:
                         st.error("Invalid embeddings data.")
-                ax.set_xlabel('Relevance (Volume)')
-                ax.set_ylabel('Diversity (Overlap)')
-                ax.set_title('Relevance vs. Diversity for All Sellers')
+                
+                # Set x-axis as relevance/overlap and y-axis as diversity/volume
+                ax.set_xlabel('Relevance (Overlap)')
+                ax.set_ylabel('Diversity (Volume)')
+                ax.set_title('Relevance vs. Diversity for All Sellers')  # Corrected method name
                 ax.legend()
                 st.pyplot(fig)
             else:
                 st.warning("No seller data available.")
         else:
             st.warning("No buyer data available.")
+
+
 
 # Automatically process and display data on load
 process_and_display_data()
